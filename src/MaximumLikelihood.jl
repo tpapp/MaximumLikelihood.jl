@@ -1,0 +1,5 @@
+module MaximumLikelihood
+
+# package code goes here
+
+end # module
