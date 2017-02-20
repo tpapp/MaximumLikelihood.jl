@@ -1,1 +1,6 @@
 julia 0.5
+Optim
+PDMats
+ValidatedNumerics
+StatsFuns
+AutoAligns
