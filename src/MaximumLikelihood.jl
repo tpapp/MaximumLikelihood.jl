@@ -5,6 +5,7 @@ using PDMats
 using ValidatedNumerics
 using StatsFuns
 using AutoAligns
+import ForwardDiff
 
 export estimate_ML
 
@@ -45,7 +46,7 @@ function estimate_ML(log_ℓ, initial_θ;
         error("""Maximum likelihood did not converge.
 Check concavity and initial value.""")
     θ = o.minimizer
-    Σ = inv(PDMat(-ForwardDiff.hessian(log_ℓ, θ)))
+    Σ = inv(PDMat(Symmetric(-ForwardDiff.hessian(log_ℓ, θ))))
     ML_estimator(θ, Σ, varnames, o)
 end
 
