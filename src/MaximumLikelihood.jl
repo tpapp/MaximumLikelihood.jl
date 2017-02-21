@@ -30,22 +30,53 @@ Default variable names, when not provided.
 default_varnames(n) = [string("θ", i) for i in 1:n]
 
 """
+Estimate the maximum likelihood parameters of the log likelihood
+function `log_ℓ`, with initial value `initial_θ`.
+
+The parameters are scaled with `θ_scale`, while the log likelihood is
+scaled with `log_ℓ_scale`. For both, `:default` uses information
+estimates from the function at `initial_θ`, while `:none` uses a unit
+scaling.
+
+`method` and `options` are passed to `Optim.optimize`.
+"""
+function estimate_ML_raw(log_ℓ, initial_θ;
+                         log_ℓ_scale = :default,
+                         θ_scale = :default,
+                         method = BFGS(), options = Optim.Options(autodiff = true))
+    γ = log_ℓ_scale == :default ? 1 / (1+abs(log_ℓ(initial_θ))) :
+        log_ℓ_scale == :none ? ones(length(initial_θ)) :
+        log_ℓ_scale
+    α = θ_scale == :default ? 1 ./ (1+abs.(ForwardDiff.gradient(log_ℓ, initial_θ))) :
+        θ_scale == :none ? 1.0 :
+        θ_scale
+    o = optimize(θ -> -(log_ℓ_scale * log_ℓ(θ .* θ_scale)), initial_θ,
+                 method, Optim.Options(autodiff = true))
+    if !Optim.converged(o)
+        error("Maximum likelihood did not converge. Check concavity and initial value.")
+    end
+    Optim.minimizer(o)
+end
+    
+"""
 Estimate parameters using maximum likelihood, with the log likelihood
 function `log_ℓ` and initial guess `initial_θ`.
 
 Return an `ML_estimator`, with `varnames` optimally
-specified. `method` is passed to `Optim.optimize`. `log_ℓ` needs to
-work with ForwardDiff.
+specified. `method` and `options` are passed to
+`Optim.optimize`. `log_ℓ` needs to work with ForwardDiff.
 """
 function estimate_ML(log_ℓ, initial_θ;
+                     log_ℓ_scale = :default,
+                     θ_scale = :default,
                      method = BFGS(),
+                     options = Optim.Options(autodiff = true),
                      varnames = default_varnames(length(initial_θ)))
-    o = optimize(θ -> -log_ℓ(θ), initial_θ,
-                 method, Optim.Options(autodiff = true))
-    Optim.converged(o) ||
-        error("""Maximum likelihood did not converge.
-Check concavity and initial value.""")
-    θ = o.minimizer
+    θ = estimate_ML_raw(log_ℓ, initial_θ;
+                        log_ℓ_scale = log_ℓ_scale,
+                        θ_scale = θ_scale,
+                        method = method,
+                        options = options)
     Σ = inv(PDMat(Symmetric(-ForwardDiff.hessian(log_ℓ, θ))))
     ML_estimator(θ, Σ, varnames, o)
 end
