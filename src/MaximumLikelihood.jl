@@ -7,7 +7,7 @@ using StatsFuns
 using AutoAligns
 import ForwardDiff
 
-export estimate_ML
+export estimate_ML, estimate_ML_parameters
 
 """
 Maximum likelihood estimator.
@@ -29,34 +29,58 @@ Default variable names, when not provided.
 """
 default_varnames(n) = [string("θ", i) for i in 1:n]
 
-"""
-Estimate the maximum likelihood parameters of the log likelihood
-function `log_ℓ`, with initial value `initial_θ`.
+"Calculate a default scaling for the log likelihood."
+function calculate_log_ℓ_scale(log_ℓ_scale, log_ℓ, initial_θ)
+    if log_ℓ_scale == :default
+        Float64(1 / (1+abs(log_ℓ(initial_θ))))
+    elseif log_ℓ_scale == :none
+        1.0
+    elseif isa(log_ℓ_scale, Real)
+        convert(Float64, log_ℓ_scale)
+    else
+        error("Invalid log_ℓ_scale $(log_ℓ_scale)")
+    end
+end
 
-The parameters are scaled with `θ_scale`, while the log likelihood is
-scaled with `log_ℓ_scale`. For both, `:default` uses information
-estimates from the function at `initial_θ`, while `:none` uses a unit
-scaling.
+"""
+Internal function for estimating the maximum likelihood parameters of
+the log likelihood function `log_ℓ`, with initial value
+`initial_θ`. Return the result of `optimize`.
+
+The log likelihood is scaled with `log_ℓ_scale`, for which `:default`
+uses information estimates from the function at `initial_θ`, while
+`:none` uses a unit scaling.
 
 `method` and `options` are passed to `Optim.optimize`.
 """
-function estimate_ML_raw(log_ℓ, initial_θ;
-                         log_ℓ_scale = :default,
-                         θ_scale = :default,
-                         method = BFGS(), options = Optim.Options(autodiff = true))
-    γ = log_ℓ_scale == :default ? 1 / (1+abs(log_ℓ(initial_θ))) :
-        log_ℓ_scale == :none ? ones(length(initial_θ)) :
-        log_ℓ_scale
-    α = θ_scale == :default ? 1 ./ (1+abs.(ForwardDiff.gradient(log_ℓ, initial_θ))) :
-        θ_scale == :none ? 1.0 :
-        θ_scale
-    o = optimize(θ -> -(log_ℓ_scale * log_ℓ(θ .* θ_scale)), initial_θ,
+function _estimate_ML(log_ℓ, initial_θ;
+                     log_ℓ_scale = :default,
+                     method = BFGS(),
+                     options = Optim.Options(autodiff = true))
+    γ = -calculate_log_ℓ_scale(log_ℓ_scale, log_ℓ, initial_θ)
+    o = optimize(θ -> γ * log_ℓ(θ), initial_θ,
                  method, Optim.Options(autodiff = true))
     if !Optim.converged(o)
         error("Maximum likelihood did not converge. Check concavity and initial value.")
     end
-    Optim.minimizer(o)
+    o
 end
+
+"""
+Maximum likelihood estimator. Returns just the parameters as a vector.
+"""
+function estimate_ML_parameters(log_ℓ, initial_θ,
+                                log_ℓ_scale = :default,
+                                method = BFGS(),
+                                options = Optim.Options(autodiff = true))
+    Optim.minimizer(_estimate_ML(log_ℓ, initial_θ,
+                                 log_ℓ_scale = log_ℓ_scale,
+                                 method = method,
+                                 options = options))
+end
+    
+
+                                
     
 """
 Estimate parameters using maximum likelihood, with the log likelihood
@@ -72,11 +96,11 @@ function estimate_ML(log_ℓ, initial_θ;
                      method = BFGS(),
                      options = Optim.Options(autodiff = true),
                      varnames = default_varnames(length(initial_θ)))
-    θ = estimate_ML_raw(log_ℓ, initial_θ;
-                        log_ℓ_scale = log_ℓ_scale,
-                        θ_scale = θ_scale,
-                        method = method,
-                        options = options)
+    o = _estimate_ML(log_ℓ, initial_θ;
+                     log_ℓ_scale = log_ℓ_scale,
+                     method = method,
+                     options = options)
+    θ = Optim.minimizer(o)
     Σ = inv(PDMat(Symmetric(-ForwardDiff.hessian(log_ℓ, θ))))
     ML_estimator(θ, Σ, varnames, o)
 end
