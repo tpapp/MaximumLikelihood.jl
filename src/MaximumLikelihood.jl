@@ -5,6 +5,7 @@ using PDMats
 using ValidatedNumerics
 using StatsFuns
 using AutoAligns
+using ForwardDiff
 
 export estimate_ML
 
