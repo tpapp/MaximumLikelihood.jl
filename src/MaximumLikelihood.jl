@@ -5,7 +5,7 @@ using PDMats
 using ValidatedNumerics
 using StatsFuns
 using AutoAligns
-import ForwardDiff
+using ForwardDiff
 
 export estimate_ML, estimate_ML_parameters
 
